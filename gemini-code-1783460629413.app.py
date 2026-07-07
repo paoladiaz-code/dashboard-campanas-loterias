@@ -3,13 +3,23 @@ import pandas as pd
 
 st.title("📊 Dashboard Loterías: Análisis de Campañas")
 
-# 1. Cargador de archivos (Aquí subes tu Excel)
+# 1. Cargador de archivos
 archivo_subido = st.file_uploader("Sube tu archivo Excel de resultados", type=["xlsx"])
 
 if archivo_subido is not None:
     # 2. Leer la data
     df = pd.read_excel(archivo_subido, sheet_name='Reporte_Nuevo')
     df = df.rename(columns={'Total:  Bonos entregados / Usaron Bonos': 'Bonos_Usados'})
+    
+    # --- CORRECCIÓN: Limpieza de datos ---
+    # Convertimos las columnas a números. Si hay guiones "-" o texto, los ignora (coerce).
+    columnas_numericas = ['Total de envíos', 'Bonos_Usados', 'Tasa de efectividad']
+    for col in columnas_numericas:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Quitamos las filas que estén totalmente vacías en la columna de envíos
+    df = df.dropna(subset=['Total de envíos'])
+    # -------------------------------------
     
     # 3. KPIs Ejecutivos
     st.header("Resumen Ejecutivo")
@@ -26,4 +36,8 @@ if archivo_subido is not None:
     # 5. Top Campañas
     st.subheader("🏆 Top 5 Campañas Exitosas")
     top_camps = df[df['Total de envíos'] > 1000].sort_values('Tasa de efectividad', ascending=False).head(5)
-    st.dataframe(top_camps[['Campaña', 'Producto', 'TIPO', 'Tasa de efectividad']])
+    
+    # Formateamos la tabla para que se vea más limpia
+    st.dataframe(
+        top_camps[['Campaña', 'Producto', 'TIPO', 'Tasa de efectividad']].style.format({'Tasa de efectividad': '{:.2%}'})
+    )
