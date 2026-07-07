@@ -102,63 +102,60 @@ if archivo_subido is not None:
     st.divider()
 
     # ---------------------------------------------------------
-    # SECCIÓN 4: Matriz de Rendimiento Completa (Mix Producto + Canal)
+    # SECCIÓN 4: Rendimiento de Canales y Productos (Con Drill-down)
     # ---------------------------------------------------------
-    st.header("🎯 Matriz de Cobertura y Rendimiento por Mix")
+    st.header("📈 Rendimiento: Canales y Productos")
     
-    mix_display = mix_analisis.sort_values('Efectividad', ascending=False).reset_index(drop=True)
-    
-    # Crear gráfico visual atractivo del Mix
-    chart_mix = alt.Chart(mix_display).mark_circle().encode(
-        x=alt.X('Total de envíos:Q', title='Volumen de Envíos (Escala Log)', scale=alt.Scale(type='log')),
-        y=alt.Y('Efectividad:Q', axis=alt.Axis(format='%'), title='Tasa de Efectividad'),
-        size=alt.Size('Bonos_Usados:Q', title='Bonos Redimidos'),
-        color=alt.Color('Producto:N', title='Producto'),
-        tooltip=['Producto', 'TIPO', alt.Tooltip('Total de envíos', format=',.0f'), alt.Tooltip('Efectividad', format='.2%'), 'Bonos_Usados']
-    ).properties(height=350, title="Eficiencia del Mix (El tamaño del círculo representa el total de bonos ganados)")
-    
-    st.altair_chart(chart_mix, use_container_width=True)
-    
-    st.subheader("Detalle Estadístico del Mix")
-    st.dataframe(
-        mix_display.style.format({
-            'Total de envíos': '{:,.0f}',
-            'Bonos_Usados': '{:,.0f}',
-            'Efectividad': '{:.2%}'
-        }),
-        use_container_width=True
-    )
-    st.divider()
-
-    # ---------------------------------------------------------
-    # SECCIÓN 5: Análisis por Canal y Producto (Evolución Temporal)
-    # ---------------------------------------------------------
-    st.header("📈 Comportamiento y Evolución Diaria")
-    
-    tab1, tab2 = st.tabs(["Canales individuales", "Productos individuales"])
+    tab1, tab2 = st.tabs(["Canales (TIPO)", "Productos"])
     
     with tab1:
+        st.subheader("Efectividad Promedio por Canal")
+        # Gráfico General
         if not df_filtered.empty:
-            canal_seleccionado = st.selectbox("Selecciona un canal para auditar su tendencia diaria:", df_filtered['TIPO'].dropna().unique())
+            canal_grp = df_filtered.groupby('TIPO')['Tasa de efectividad'].mean().reset_index()
+            bar_canal = alt.Chart(canal_grp).mark_bar(color='#4F46E5').encode(
+                x=alt.X('Tasa de efectividad:Q', axis=alt.Axis(format='%')),
+                y=alt.Y('TIPO:N', sort='-x', title='Canal'),
+                tooltip=[alt.Tooltip('TIPO', title='Canal'), alt.Tooltip('Tasa de efectividad', format='.2%')]
+            ).properties(height=300)
+            st.altair_chart(bar_canal, use_container_width=True)
+            
+            # Drill-down por fechas
+            st.write("### Detalle por Fecha (Evolución del Canal)")
+            canal_seleccionado = st.selectbox("Selecciona un canal para ver su evolución diaria:", df_filtered['TIPO'].dropna().unique())
+            
             df_canal = df_filtered[df_filtered['TIPO'] == canal_seleccionado]
             evolucion_canal = df_canal.groupby('Fecha')['Tasa de efectividad'].mean().reset_index()
             
-            line_canal = alt.Chart(evolucion_canal).mark_line(point=True, color='#4F46E5').encode(
-                x=alt.X('Fecha:T', title='Fecha del Envío'),
-                y=alt.Y('Tasa de efectividad:Q', axis=alt.Axis(format='%'), title='Efectividad Promedio'),
+            line_canal = alt.Chart(evolucion_canal).mark_line(point=True, color='#10B981').encode(
+                x=alt.X('Fecha:T', title='Fecha'),
+                y=alt.Y('Tasa de efectividad:Q', axis=alt.Axis(format='%'), title='Efectividad Prom.'),
                 tooltip=['Fecha:T', alt.Tooltip('Tasa de efectividad', format='.2%')]
             ).properties(height=250)
             st.altair_chart(line_canal, use_container_width=True)
         
     with tab2:
+        st.subheader("Efectividad Promedio por Producto")
+        # Gráfico General
         if not df_filtered.empty:
-            prod_seleccionado = st.selectbox("Selecciona un producto para auditar su tendencia diaria:", df_filtered['Producto'].dropna().unique())
+            prod_grp = df_filtered.groupby('Producto')['Tasa de efectividad'].mean().reset_index()
+            bar_prod = alt.Chart(prod_grp).mark_bar(color='#F59E0B').encode(
+                x=alt.X('Tasa de efectividad:Q', axis=alt.Axis(format='%')),
+                y=alt.Y('Producto:N', sort='-x', title='Producto'),
+                tooltip=[alt.Tooltip('Producto', title='Producto'), alt.Tooltip('Tasa de efectividad', format='.2%')]
+            ).properties(height=300)
+            st.altair_chart(bar_prod, use_container_width=True)
+            
+            # Drill-down por fechas
+            st.write("### Detalle por Fecha (Evolución del Producto)")
+            prod_seleccionado = st.selectbox("Selecciona un producto para ver su evolución diaria:", df_filtered['Producto'].dropna().unique())
+            
             df_prod = df_filtered[df_filtered['Producto'] == prod_seleccionado]
             evolucion_prod = df_prod.groupby('Fecha')['Tasa de efectividad'].mean().reset_index()
             
-            line_prod = alt.Chart(evolucion_prod).mark_line(point=True, color='#F59E0B').encode(
-                x=alt.X('Fecha:T', title='Fecha del Envío'),
-                y=alt.Y('Tasa de efectividad:Q', axis=alt.Axis(format='%'), title='Efectividad Promedio'),
+            line_prod = alt.Chart(evolucion_prod).mark_line(point=True, color='#EF4444').encode(
+                x=alt.X('Fecha:T', title='Fecha'),
+                y=alt.Y('Tasa de efectividad:Q', axis=alt.Axis(format='%'), title='Efectividad Prom.'),
                 tooltip=['Fecha:T', alt.Tooltip('Tasa de efectividad', format='.2%')]
             ).properties(height=250)
             st.altair_chart(line_prod, use_container_width=True)
@@ -166,7 +163,7 @@ if archivo_subido is not None:
     st.divider()
 
     # ---------------------------------------------------------
-    # SECCIÓN 6: Alertas Críticas (Efectividad < 1.0%)
+    # SECCIÓN 5: Alertas Críticas (Efectividad < 1.0%)
     # ---------------------------------------------------------
     st.header("🚨 Alertas de Campañas Críticas (Efectividad < 1.0%)")
     
@@ -189,7 +186,7 @@ if archivo_subido is not None:
     st.divider()
 
     # ---------------------------------------------------------
-    # SECCIÓN 7: Buscador y Top 10 Campañas Auditadas
+    # SECCIÓN 6: Buscador y Top 10 Campañas Auditadas
     # ---------------------------------------------------------
     st.header("🏆 Auditoría de Campañas: Top 10 del Periodo")
     
