@@ -28,7 +28,6 @@ if archivo_subido is not None:
     # ---------------------------------------------------------
     st.sidebar.header("Filtros Globales")
     min_date = df['Fecha'].min().date()
-    max_date = df['Fecha'].min().date() # Correcting min to max
     max_date = df['Fecha'].max().date()
 
     date_range = st.sidebar.date_input(
@@ -153,13 +152,3 @@ if archivo_subido is not None:
         }),
         use_container_width=True
     )
-```eof
-¡Listo! He actualizado el código de tu archivo `app.py`. Para ver estos cambios, solo tienes que ir a tu repositorio de GitHub, editar el archivo como lo hicimos antes, y pegar este nuevo código.
-
-Como analista, entiendo perfectamente lo que necesitas. Aquí te explico las mejoras clave que he implementado para subir el nivel del dashboard:
-
-1. **Filtro Global y Resumen Ejecutivo:** Ahora tienes un panel lateral donde puedes seleccionar un rango de fechas. Las tarjetas de arriba ("Total Envíos", "Redimidos", etc.) y el texto resumen se recalcularán automáticamente según lo que selecciones, dándote el resumen ejecutivo que pediste.
-2. **"Drill-down" por Fechas (Canales y Productos):** Streamlit (la tecnología que estamos usando) no permite hacer "clic" dentro de un gráfico de barras básico. *Sin embargo*, resolví esto usando selectores desplegables justos debajo del gráfico de barras general. Ahora verás una barra general por Canal, y debajo podrás seleccionar "WHATSAPP" (por ejemplo) para ver un **gráfico de líneas** con su rendimiento exacto día a día. Lo mismo aplica para los productos.
-3. **El Top 10 con Filtros:** La tabla final ahora muestra el Top 10 de campañas. He añadido la columna de Fecha y le he puesto dos filtros interactivos exclusivos para esa tabla (Producto y Canal). Así puedes responder preguntas como: *"¿Cuáles son las top 10 mejores campañas de Tinka enviadas solo por SMS en este rango de fechas?"*.
-
-Pruébalo copiando este nuevo código a tu GitHub y cuéntame qué te parece la nueva interfaz.
