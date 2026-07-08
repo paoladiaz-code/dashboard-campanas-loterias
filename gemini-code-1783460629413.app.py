@@ -65,16 +65,4 @@ if archivo_subido is not None:
     
     total_envios = df_filtered['Total de envíos'].sum() if 'Total de envíos' in df_filtered.columns else 0
     total_jugadores = df_filtered['Jugadores'].sum() if 'Jugadores' in df_filtered.columns else 0
-    tasa_act_global = (total_jugadores / total_envios) if total_envios > 0 else 0
-    
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Volumen Total Impactado", f"{total_envios:,.0f}")
-    col2.metric("Total Clientes que Jugaron", f"{total_jugadores:,.0f}")
-    col3.metric("Tasa de Actividad Global", f"{(tasa_act_global * 100):.2f}%")
-    
-    if 'Producto' in df_filtered.columns and 'TIPO' in df_filtered.columns and 'Jugadores' in df_filtered.columns:
-        mix_analisis = df_filtered.groupby(['Producto', 'TIPO'])[['Total de envíos', 'Jugadores']].sum().reset_index()
-        mix_analisis['Actividad'] = mix_analisis['Jugadores'] / mix_analisis['Total de envíos']
-        mix_ganador = mix_analisis.sort_values('Actividad', ascending=False).iloc[0] if not mix_analisis.empty else None
-        
-        if mix_ganador is not None
+    tasa_act
