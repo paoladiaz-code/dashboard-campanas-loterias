@@ -11,40 +11,50 @@ archivo_subido = st.file_uploader("Sube tu archivo Excel de resultados", type=["
 if archivo_subido is not None:
     # 2. Leer la data y limpiar
     df = pd.read_excel(archivo_subido, sheet_name='Reporte_Nuevo')
+    
+    # Renombrado flexible
     df = df.rename(columns={
         'Total:  Bonos entregados / Usaron Bonos': 'Bonos_Usados',
         'Clientes que jugaron': 'Jugadores',
         'Tasa de Actividad en juego': 'Tasa_Actividad',
         'Fecha de Envío': 'Fecha',
-        'Campaña.1': 'Mensaje_Texto'
+        'Campaña.1': 'Mensaje_Texto',
+        'Mensaje': 'Mensaje_Texto' # Por si la columna se llama diferente en nuevos reportes
     })
     
     # Limpieza estricta de datos (fechas y números)
-    df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
+    if 'Fecha' in df.columns:
+        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
+        
     columnas_numericas = ['Total de envíos', 'Bonos_Usados', 'Tasa de efectividad', 'Jugadores', 'Tasa_Actividad']
     for col in columnas_numericas:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    df = df.dropna(subset=['Total de envíos', 'Fecha'])
+    if 'Total de envíos' in df.columns and 'Fecha' in df.columns:
+        df = df.dropna(subset=['Total de envíos', 'Fecha'])
     
     # ---------------------------------------------------------
     # SECCIÓN 1: Filtro Global de Fechas
     # ---------------------------------------------------------
     st.sidebar.header("Filtros de Temporalidad")
-    min_date = df['Fecha'].min().date()
-    max_date = df['Fecha'].max().date()
-
-    date_range = st.sidebar.date_input(
-        "Selecciona el rango de fechas para el análisis:",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date
-    )
-
-    if len(date_range) == 2:
-        start_date, end_date = date_range
-        mask = (df['Fecha'].dt.date >= start_date) & (df['Fecha'].dt.date <= end_date)
-        df_filtered = df.loc[mask]
+    if 'Fecha' in df.columns and not df['Fecha'].empty:
+        min_date = df['Fecha'].min().date()
+        max_date = df['Fecha'].max().date()
+    
+        date_range = st.sidebar.date_input(
+            "Selecciona el rango de fechas para el análisis:",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date
+        )
+    
+        if len(date_range) == 2:
+            start_date, end_date = date_range
+            mask = (df['Fecha'].dt.date >= start_date) & (df['Fecha'].dt.date <= end_date)
+            df_filtered = df.loc[mask]
+        else:
+            df_filtered = df.copy()
     else:
         df_filtered = df.copy()
 
@@ -53,8 +63,8 @@ if archivo_subido is not None:
     # ---------------------------------------------------------
     st.header("📋 Resumen Ejecutivo Estratégico (Foco: Actividad)")
     
-    total_envios = df_filtered['Total de envíos'].sum()
-    total_jugadores = df_filtered['Jugadores'].sum()
+    total_envios = df_filtered['Total de envíos'].sum() if 'Total de envíos' in df_filtered.columns else 0
+    total_jugadores = df_filtered['Jugadores'].sum() if 'Jugadores' in df_filtered.columns else 0
     tasa_act_global = (total_jugadores / total_envios) if total_envios > 0 else 0
     
     col1, col2, col3 = st.columns(3)
@@ -63,15 +73,16 @@ if archivo_subido is not None:
     col3.metric("Tasa de Actividad Global", f"{(tasa_act_global * 100):.2f}%")
     
     # Análisis dinámico inteligente
-    mix_analisis = df_filtered.groupby(['Producto', 'TIPO'])[['Total de envíos', 'Jugadores']].sum().reset_index()
-    mix_analisis['Actividad'] = mix_analisis['Jugadores'] / mix_analisis['Total de envíos']
-    mix_ganador = mix_analisis.sort_values('Actividad', ascending=False).iloc[0] if not mix_analisis.empty else None
-    
-    if mix_ganador is not None:
-        st.info(
-            f"**Diagnóstico de Rendimiento:** En el rango seleccionado, el ecosistema digital movilizó a **{total_jugadores:,.0f} clientes reales a jugar**, logrando una tasa de actividad del **{(tasa_act_global * 100):.2f}%** sobre el total de impactos.\n\n"
-            f"💡 **Tracción Principal:** El mix comercial más efectivo para generar juego es **{mix_ganador['Producto']} vía {mix_ganador['TIPO']}**, liderando el retorno con una tasa de actividad del **{(mix_ganador['Actividad']*100):.2f}%**. Mantener este flujo encendido y optimizado debe ser prioridad número uno."
-        )
+    if 'Producto' in df_filtered.columns and 'TIPO' in df_filtered.columns and 'Jugadores' in df_filtered.columns:
+        mix_analisis = df_filtered.groupby(['Producto', 'TIPO'])[['Total de envíos', 'Jugadores']].sum().reset_index()
+        mix_analisis['Actividad'] = mix_analisis['Jugadores'] / mix_analisis['Total de envíos']
+        mix_ganador = mix_analisis.sort_values('Actividad', ascending=False).iloc[0] if not mix_analisis.empty else None
+        
+        if mix_ganador is not None:
+            st.info(
+                f"**Diagnóstico de Rendimiento:** En el rango seleccionado, el ecosistema digital movilizó a **{total_jugadores:,.0f} clientes reales a jugar**, logrando una tasa de actividad del **{(tasa_act_global * 100):.2f}%** sobre el total de impactos.\n\n"
+                f"💡 **Tracción Principal:** El mix comercial más efectivo para generar juego es **{mix_ganador['Producto']} vía {mix_ganador['TIPO']}**, liderando el retorno con una tasa de actividad del **{(mix_ganador['Actividad']*100):.2f}%**. Mantener este flujo encendido y optimizado debe ser prioridad número uno."
+            )
     st.divider()
 
     # ---------------------------------------------------------
@@ -84,7 +95,7 @@ if archivo_subido is not None:
         if 'Mensaje_Texto' not in df_text.columns or df_text.empty:
             return None
         
-        df_text['Mensaje_Temp'] = df_text['Mensaje_Texto'].fillna('').str.lower()
+        df_text['Mensaje_Temp'] = df_text['Mensaje_Texto'].fillna('').astype(str).str.lower()
         
         categorias = {
             'Urgencia / Tiempo': ['hoy', 'ahora', 'ya', 'solo por'],
@@ -97,14 +108,15 @@ if archivo_subido is not None:
         resultados = []
         for cat, palabras in categorias.items():
             mask = df_text['Mensaje_Temp'].apply(lambda x: any(p in x for p in palabras))
-            if mask.sum() > 0:
+            if mask.sum() > 0 and 'Tasa_Actividad' in df_text.columns:
                 tasa_promedio = df_text.loc[mask, 'Tasa_Actividad'].mean()
                 resultados.append({'Concepto': cat, 'Tasa Promedio': tasa_promedio, 'Uso': mask.sum()})
                 
         return pd.DataFrame(resultados).sort_values('Tasa Promedio', ascending=False) if resultados else None
 
-    # Procesar datos clave para los insights dinámicos
-    top_canal_perf = df_filtered.groupby('TIPO')['Jugadores'].sum().sort_values(ascending=False).index[0] if total_jugadores > 0 else "N/A"
+    top_canal_perf = "N/A"
+    if 'TIPO' in df_filtered.columns and 'Jugadores' in df_filtered.columns and total_jugadores > 0:
+        top_canal_perf = df_filtered.groupby('TIPO')['Jugadores'].sum().sort_values(ascending=False).index[0]
     
     ins_col1, ins_col2 = st.columns(2)
     
@@ -117,14 +129,14 @@ if archivo_subido is not None:
         
     with ins_col2:
         st.subheader("📝 Análisis Semántico (Keywords & Copy)")
-        analisis_kw = analizar_keywords(df_filtered)
+        analisis_kw = analizar_keywords(df_filtered.copy())
         
         if analisis_kw is not None and not analisis_kw.empty:
             mejor_concepto = analisis_kw.iloc[0]
             st.markdown(
                 f"* **El Gatillo Ganador:** Los mensajes que incluyen conceptos de **{mejor_concepto['Concepto']}** promedian una tasa de actividad del **{(mejor_concepto['Tasa Promedio']*100):.2f}%**.\n"
                 f"* **Fricción en la Redirección:** Incluir URLs cortas (*cutt.ly, bit.ly*) y llamados a la acción claros ('Juega aquí') es vital en SMS/WhatsApp para reducir los pasos del cliente hacia la plataforma.\n"
-                f"* **Recomendación de Copy:** Para la siguiente semana, estructurar el mensaje priorizando el motivo ganador ({mejor_concepto['Concepto']}) en los primeros 40 caracteres del texto."
+                f"* **Recomendación de Copy:** Para la siguiente semana, estructurar el mensaje priorizando el motivo ganador ({mejor_concepto['Concepto']}) en los primeros caracteres."
             )
         else:
             st.markdown("* No se detectó suficiente variedad en los textos de las campañas filtradas para realizar un análisis semántico. Se recomienda incluir la columna completa de mensajes en futuros reportes.")
@@ -140,7 +152,7 @@ if archivo_subido is not None:
     
     with tab1:
         st.subheader("Tasa de Actividad Promedio por Canal")
-        if not df_filtered.empty:
+        if not df_filtered.empty and 'TIPO' in df_filtered.columns and 'Tasa_Actividad' in df_filtered.columns:
             canal_grp = df_filtered.groupby('TIPO')['Tasa_Actividad'].mean().reset_index()
             bar_canal = alt.Chart(canal_grp).mark_bar(color='#10B981').encode(
                 x=alt.X('Tasa_Actividad:Q', axis=alt.Axis(format='%'), title='Tasa de Actividad en Juego'),
@@ -153,18 +165,18 @@ if archivo_subido is not None:
             canal_seleccionado = st.selectbox("Selecciona un canal para auditar su tendencia:", df_filtered['TIPO'].dropna().unique())
             
             df_canal = df_filtered[df_filtered['TIPO'] == canal_seleccionado]
-            evolucion_canal = df_canal.groupby('Fecha')['Tasa_Actividad'].mean().reset_index()
-            
-            line_canal = alt.Chart(evolucion_canal).mark_line(point=True, color='#10B981').encode(
-                x=alt.X('Fecha:T', title='Fecha de Envío'),
-                y=alt.Y('Tasa_Actividad:Q', axis=alt.Axis(format='%'), title='Tasa de Actividad Promedio'),
-                tooltip=['Fecha:T', alt.Tooltip('Tasa_Actividad', format='.2%', title='Actividad')]
-            ).properties(height=250)
-            st.altair_chart(line_canal, use_container_width=True)
+            if not df_canal.empty and 'Fecha' in df_canal.columns:
+                evolucion_canal = df_canal.groupby('Fecha')['Tasa_Actividad'].mean().reset_index()
+                line_canal = alt.Chart(evolucion_canal).mark_line(point=True, color='#10B981').encode(
+                    x=alt.X('Fecha:T', title='Fecha de Envío'),
+                    y=alt.Y('Tasa_Actividad:Q', axis=alt.Axis(format='%'), title='Tasa de Actividad Promedio'),
+                    tooltip=['Fecha:T', alt.Tooltip('Tasa_Actividad', format='.2%', title='Actividad')]
+                ).properties(height=250)
+                st.altair_chart(line_canal, use_container_width=True)
         
     with tab2:
         st.subheader("Tasa de Actividad Promedio por Producto")
-        if not df_filtered.empty:
+        if not df_filtered.empty and 'Producto' in df_filtered.columns and 'Tasa_Actividad' in df_filtered.columns:
             prod_grp = df_filtered.groupby('Producto')['Tasa_Actividad'].mean().reset_index()
             bar_prod = alt.Chart(prod_grp).mark_bar(color='#F59E0B').encode(
                 x=alt.X('Tasa_Actividad:Q', axis=alt.Axis(format='%'), title='Tasa de Actividad en Juego'),
@@ -177,14 +189,14 @@ if archivo_subido is not None:
             prod_seleccionado = st.selectbox("Selecciona un producto para auditar su tendencia:", df_filtered['Producto'].dropna().unique())
             
             df_prod = df_filtered[df_filtered['Producto'] == prod_seleccionado]
-            evolucion_prod = df_prod.groupby('Fecha')['Tasa_Actividad'].mean().reset_index()
-            
-            line_prod = alt.Chart(evolucion_prod).mark_line(point=True, color='#EF4444').encode(
-                x=alt.X('Fecha:T', title='Fecha de Envío'),
-                y=alt.Y('Tasa_Actividad:Q', axis=alt.Axis(format='%'), title='Tasa de Actividad Promedio'),
-                tooltip=['Fecha:T', alt.Tooltip('Tasa_Actividad', format='.2%', title='Actividad')]
-            ).properties(height=250)
-            st.altair_chart(line_prod, use_container_width=True)
+            if not df_prod.empty and 'Fecha' in df_prod.columns:
+                evolucion_prod = df_prod.groupby('Fecha')['Tasa_Actividad'].mean().reset_index()
+                line_prod = alt.Chart(evolucion_prod).mark_line(point=True, color='#EF4444').encode(
+                    x=alt.X('Fecha:T', title='Fecha de Envío'),
+                    y=alt.Y('Tasa_Actividad:Q', axis=alt.Axis(format='%'), title='Tasa de Actividad Promedio'),
+                    tooltip=['Fecha:T', alt.Tooltip('Tasa_Actividad', format='.2%', title='Actividad')]
+                ).properties(height=250)
+                st.altair_chart(line_prod, use_container_width=True)
 
     st.divider()
 
@@ -193,23 +205,25 @@ if archivo_subido is not None:
     # ---------------------------------------------------------
     st.header("🚨 Alertas Críticas (Tasa de Actividad < 1.0%)")
     
-    alertas_df = df_filtered[(df_filtered['Tasa_Actividad'] < 0.01) & (df_filtered['Total de envíos'] >= 500)]
-    
-    if not alertas_df.empty:
-        st.warning(f"Se detectaron **{len(alertas_df)} envíos** masivos (más de 500 impactos) que generaron menos del 1% de actividad de juego. Se sugiere pausar y reevaluar la segmentación de estas campañas.")
-        alertas_df_clean = alertas_df.sort_values('Tasa_Actividad', ascending=True)
-        alertas_df_clean['Fecha'] = alertas_df_clean['Fecha'].dt.strftime('%Y-%m-%d')
-        st.dataframe(
-            alertas_df_clean[['Fecha', 'Campaña', 'Producto', 'TIPO', 'Total de envíos', 'Jugadores', 'Tasa_Actividad']].style.format({
-                'Tasa_Actividad': '{:.2%}',
-                'Total de envíos': '{:,.0f}',
-                'Jugadores': '{:,.0f}'
-            }),
-            use_container_width=True
-        )
-    else:
-        st.success("¡Excelente! No se encontraron campañas masivas con rendimiento de actividad inferior al 1.0% en el periodo seleccionado.")
+    if 'Tasa_Actividad' in df_filtered.columns and 'Total de envíos' in df_filtered.columns:
+        alertas_df = df_filtered[(df_filtered['Tasa_Actividad'] < 0.01) & (df_filtered['Total de envíos'] >= 500)]
         
+        if not alertas_df.empty:
+            st.warning(f"Se detectaron **{len(alertas_df)} envíos** masivos que generaron menos del 1% de actividad. Se sugiere pausar y reevaluar la segmentación.")
+            alertas_df_clean = alertas_df.sort_values('Tasa_Actividad', ascending=True)
+            if 'Fecha' in alertas_df_clean.columns:
+                alertas_df_clean['Fecha'] = alertas_df_clean['Fecha'].dt.strftime('%Y-%m-%d')
+                
+            cols_alerta = ['Fecha', 'Campaña', 'Producto', 'TIPO', 'Total de envíos', 'Jugadores', 'Tasa_Actividad']
+            cols_alerta_final = [c for c in cols_alerta if c in alertas_df_clean.columns]
+            
+            fmt_dict_alert = {'Tasa_Actividad': '{:.2%}', 'Total de envíos': '{:,.0f}', 'Jugadores': '{:,.0f}'}
+            fmt_dict_alert = {k: v for k, v in fmt_dict_alert.items() if k in cols_alerta_final}
+            
+            st.dataframe(alertas_df_clean[cols_alerta_final].style.format(fmt_dict_alert), use_container_width=True)
+        else:
+            st.success("¡Excelente! No se encontraron campañas masivas con rendimiento inferior al 1.0% en este periodo.")
+            
     st.divider()
 
     # ---------------------------------------------------------
@@ -219,26 +233,41 @@ if archivo_subido is not None:
     
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        f_producto = st.multiselect("Filtrar la tabla por Producto:", df_filtered['Producto'].dropna().unique())
+        if 'Producto' in df_filtered.columns:
+            f_producto = st.multiselect("Filtrar la tabla por Producto:", df_filtered['Producto'].dropna().unique())
+        else: f_producto = []
     with col_f2:
-        f_canal = st.multiselect("Filtrar la tabla por Canal:", df_filtered['TIPO'].dropna().unique())
+        if 'TIPO' in df_filtered.columns:
+            f_canal = st.multiselect("Filtrar la tabla por Canal:", df_filtered['TIPO'].dropna().unique())
+        else: f_canal = []
         
     df_top = df_filtered.copy()
-    if f_producto:
+    if f_producto and 'Producto' in df_top.columns:
         df_top = df_top[df_top['Producto'].isin(f_producto)]
-    if f_canal:
+    if f_canal and 'TIPO' in df_top.columns:
         df_top = df_top[df_top['TIPO'].isin(f_canal)]
         
-    # Filtrar min 500 envíos y ordenar por Tasa de Actividad
-    top_10 = df_top[df_top['Total de envíos'] >= 500].sort_values('Tasa_Actividad', ascending=False).head(10)
-    top_10['Fecha'] = top_10['Fecha'].dt.strftime('%Y-%m-%d')
-    
-    # Se agrega la columna de Mensaje_Texto para que se pueda auditar el copy ganador
-    st.dataframe(
-        top_10[['Fecha', 'Campaña', 'Producto', 'TIPO', 'Mensaje_Texto', 'Total de envíos', 'Jugadores', 'Tasa_Actividad']].style.format({
+    if 'Total de envíos' in df_top.columns and 'Tasa_Actividad' in df_top.columns:
+        top_10 = df_top[df_top['Total de envíos'] >= 500].sort_values('Tasa_Actividad', ascending=False).head(10)
+        
+        if 'Fecha' in top_10.columns:
+            top_10['Fecha'] = top_10['Fecha'].dt.strftime('%Y-%m-%d')
+        
+        # Blindaje para asegurar que solo se pidan columnas que SÍ existen en el archivo
+        columnas_deseadas = ['Fecha', 'Campaña', 'Producto', 'TIPO', 'Mensaje_Texto', 'Total de envíos', 'Jugadores', 'Tasa_Actividad']
+        columnas_finales = [col for col in columnas_deseadas if col in top_10.columns]
+        
+        formato_columnas = {
             'Tasa_Actividad': '{:.2%}',
             'Total de envíos': '{:,.0f}',
             'Jugadores': '{:,.0f}'
-        }),
-        use_container_width=True
-    )
+        }
+        # Solo aplicar formato a las columnas que existen
+        formato_final = {k: v for k, v in formato_columnas.items() if k in columnas_finales}
+        
+        st.dataframe(
+            top_10[columnas_finales].style.format(formato_final),
+            use_container_width=True
+        )
+    else:
+        st.warning("No hay suficientes datos (columna de envíos o actividad) para generar el ranking.")
