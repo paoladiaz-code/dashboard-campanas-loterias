@@ -1,284 +1,456 @@
-import streamlit as st
-import pandas as pd
-import altair as alt
-
-st.set_page_config(page_title="Dashboard Loterías Avanzado", layout="wide")
-st.title("📊 Dashboard Loterías: Analítica de Actividad e Insights")
-
-# 1. Cargador de archivos
-archivo_subido = st.file_uploader("Sube tu archivo Excel de resultados", type=["xlsx"])
-
-if archivo_subido is not None:
-    # 2. Leer la data y limpiar
-    df = pd.read_excel(archivo_subido, sheet_name='Reporte_Nuevo')
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inteligencia de Campañas | Loterías</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- ApexCharts para gráficos profesionales -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    # Renombrado flexible
-    df = df.rename(columns={
-        'Total:  Bonos entregados / Usaron Bonos': 'Bonos_Usados',
-        'Clientes que jugaron': 'Jugadores',
-        'Tasa de Actividad en juego': 'Tasa_Actividad',
-        'Fecha de Envío': 'Fecha',
-        'Campaña.1': 'Mensaje_Texto',
-        'Mensaje': 'Mensaje_Texto'
-    })
-    
-    # Limpieza estricta de datos (fechas y números)
-    if 'Fecha' in df.columns:
-        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
-        
-    columnas_numericas = ['Total de envíos', 'Bonos_Usados', 'Tasa de efectividad', 'Jugadores', 'Tasa_Actividad']
-    for col in columnas_numericas:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-    
-    if 'Total de envíos' in df.columns and 'Fecha' in df.columns:
-        df = df.dropna(subset=['Total de envíos', 'Fecha'])
-    
-    # ---------------------------------------------------------
-    # SECCIÓN 1: Filtro Global de Fechas
-    # ---------------------------------------------------------
-    st.sidebar.header("Filtros de Temporalidad")
-    if 'Fecha' in df.columns and not df['Fecha'].empty:
-        min_date = df['Fecha'].min().date()
-        max_date = df['Fecha'].max().date()
-    
-        date_range = st.sidebar.date_input(
-            "Selecciona el rango de fechas para el análisis:",
-            value=(min_date, max_date),
-            min_value=min_date,
-            max_value=max_date
-        )
-    
-        if len(date_range) == 2:
-            start_date, end_date = date_range
-            mask = (df['Fecha'].dt.date >= start_date) & (df['Fecha'].dt.date <= end_date)
-            df_filtered = df.loc[mask]
-        else:
-            df_filtered = df.copy()
-    else:
-        df_filtered = df.copy()
-
-    # ---------------------------------------------------------
-    # SECCIÓN 2: Resumen Ejecutivo Ponderado
-    # ---------------------------------------------------------
-    st.header("📋 Resumen Ejecutivo Estratégico (Foco: Actividad)")
-    
-    total_envios = df_filtered['Total de envíos'].sum() if 'Total de envíos' in df_filtered.columns else 0
-    total_jugadores = df_filtered['Jugadores'].sum() if 'Jugadores' in df_filtered.columns else 0
-    tasa_act_global = (total_jugadores / total_envios) if total_envios > 0 else 0
-    
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Volumen Total Impactado", f"{total_envios:,.0f}")
-    col2.metric("Total Clientes que Jugaron", f"{total_jugadores:,.0f}")
-    col3.metric("Tasa de Actividad Global", f"{(tasa_act_global * 100):.2f}%")
-    
-    if 'Producto' in df_filtered.columns and 'TIPO' in df_filtered.columns and 'Jugadores' in df_filtered.columns:
-        mix_analisis = df_filtered.groupby(['Producto', 'TIPO'])[['Total de envíos', 'Jugadores']].sum().reset_index()
-        mix_analisis['Actividad'] = mix_analisis['Jugadores'] / mix_analisis['Total de envíos']
-        mix_ganador = mix_analisis.sort_values('Actividad', ascending=False).iloc[0] if not mix_analisis.empty else None
-        
-        if mix_ganador is not None:
-            st.info(
-                f"**Diagnóstico de Rendimiento:** En el rango seleccionado, el ecosistema digital movilizó a **{total_jugadores:,.0f} clientes reales a jugar**, logrando una tasa de actividad del **{(tasa_act_global * 100):.2f}%** sobre el total de impactos.\n\n"
-                f"💡 **Tracción Principal:** El mix comercial más efectivo para generar juego es **{mix_ganador['Producto']} vía {mix_ganador['TIPO']}**, liderando el retorno con una tasa de actividad del **{(mix_ganador['Actividad']*100):.2f}%**."
-            )
-    st.divider()
-
-    # ---------------------------------------------------------
-    # SECCIÓN 3: Insights y Planificación Próxima Semana
-    # ---------------------------------------------------------
-    st.header("💡 Insights & Plan de Acción para Próxima Semana")
-    
-    def analizar_keywords(df_text):
-        if 'Mensaje_Texto' not in df_text.columns or df_text.empty:
-            return None
-        
-        df_text['Mensaje_Temp'] = df_text['Mensaje_Texto'].fillna('').astype(str).str.lower()
-        
-        categorias = {
-            'Urgencia / Tiempo (hoy, ahora, ya)': ['hoy', 'ahora', 'ya', 'solo por'],
-            'Gratuidad / Regalo (gratis, lleva)': ['gratis', 'regalo', 'regalamos', 'lleva'],
-            'Incentivo Económico (saldo, bono)': ['saldo', 'bono', 's/'],
-            'Pozo / Millonario (pozo, millones)': ['pozo', 'millones', 'acumulado', 'millonario'],
-            'Call To Action (juega aqui, links)': ['http', 'cutt.ly', 'bit.ly', 'link', 'juega aqui']
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1e3a8a', // Blue 900
+                        secondary: '#3b82f6', // Blue 500
+                        accent: '#10b981', // Emerald 500
+                        danger: '#ef4444', // Red 500
+                        warning: '#f59e0b', // Amber 500
+                        surface: '#ffffff',
+                        background: '#f8fafc'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
         }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Top Navigation -->
+    <header class="glass sticky top-0 z-50 border-b border-slate-200 px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-primary text-white rounded-lg flex items-center justify-center text-xl shadow-md">
+                <i class="fa-solid fa-chart-pie"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-slate-900 leading-tight">Dashboard Ejecutivo</h1>
+                <p class="text-xs text-slate-500 font-medium">Analítica de Actividad & Insights</p>
+            </div>
+        </div>
+        <div class="flex gap-4 items-center">
+            <div class="text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-md border border-slate-200 flex items-center gap-2">
+                <i class="fa-regular fa-calendar"></i>
+                <span id="date-range-label">Últimos 14 Días</span>
+            </div>
+            <button class="bg-primary hover:bg-blue-800 text-white text-sm font-medium px-4 py-2 rounded-md transition-colors shadow-sm" onclick="alert('En producción, esto abriría un modal para subir el archivo Excel.')">
+                <i class="fa-solid fa-upload mr-2"></i> Subir Datos
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-6 max-w-[1600px] mx-auto w-full flex flex-col gap-6">
         
-        resultados = []
-        for cat, palabras in categorias.items():
-            mask = df_text['Mensaje_Temp'].apply(lambda x: any(p in x for p in palabras))
-            if mask.sum() > 0 and 'Tasa_Actividad' in df_text.columns:
-                tasa_promedio = df_text.loc[mask, 'Tasa_Actividad'].mean()
-                resultados.append({'Concepto': cat, 'Tasa Promedio': tasa_promedio, 'Uso': mask.sum()})
+        <!-- KPIs Section -->
+        <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="card p-5 relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10 text-primary text-5xl"><i class="fa-solid fa-paper-plane"></i></div>
+                <h3 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Volumen Impactado</h3>
+                <div class="text-3xl font-bold text-slate-800" id="kpi-envios">0</div>
+                <div class="mt-2 text-xs font-medium text-slate-500">Total de envíos procesados</div>
+            </div>
+            <div class="card p-5 relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10 text-accent text-5xl"><i class="fa-solid fa-users"></i></div>
+                <h3 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Clientes Activos</h3>
+                <div class="text-3xl font-bold text-slate-800" id="kpi-jugadores">0</div>
+                <div class="mt-2 text-xs font-medium text-accent"><i class="fa-solid fa-arrow-trend-up mr-1"></i> Principal métrica de conversión</div>
+            </div>
+            <div class="card p-5 relative overflow-hidden border-l-4 border-l-accent">
+                <div class="absolute top-0 right-0 p-4 opacity-10 text-accent text-5xl"><i class="fa-solid fa-bolt"></i></div>
+                <h3 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Tasa de Actividad</h3>
+                <div class="text-3xl font-bold text-accent" id="kpi-tasa">0.00%</div>
+                <div class="mt-2 text-xs font-medium text-slate-500">Conversión global promedio</div>
+            </div>
+            <div class="card p-5 bg-gradient-to-br from-primary to-blue-700 text-white">
+                <h3 class="text-sm font-medium text-blue-200 uppercase tracking-wider mb-1">Mix Ganador</h3>
+                <div class="text-2xl font-bold mb-1" id="kpi-mix-name">Calculando...</div>
+                <div class="flex items-center gap-2 mt-2 bg-white/20 rounded px-2 py-1 w-fit">
+                    <i class="fa-solid fa-star text-yellow-300 text-xs"></i>
+                    <span class="text-sm font-semibold" id="kpi-mix-tasa">0%</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Insights Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="card p-6 border-t-4 border-t-warning">
+                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4">
+                    <i class="fa-solid fa-lightbulb text-warning"></i> Análisis Semántico & Recomendaciones
+                </h2>
+                <div class="space-y-4">
+                    <div class="flex gap-4 items-start">
+                        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 mt-1"><i class="fa-solid fa-comment-dots"></i></div>
+                        <div>
+                            <h4 class="font-semibold text-slate-800 text-sm">El Gatillo Ganador</h4>
+                            <p class="text-sm text-slate-600 mt-1" id="insight-keyword">Cargando análisis semántico...</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-4 items-start">
+                        <div class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 mt-1"><i class="fa-solid fa-link"></i></div>
+                        <div>
+                            <h4 class="font-semibold text-slate-800 text-sm">Fricción en Redirección</h4>
+                            <p class="text-sm text-slate-600 mt-1">Incluir URLs cortas (cutt.ly) y CTA claros ('Juega aquí') en los primeros 40 caracteres incrementa la actividad en SMS/WA.</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 mt-2">
+                        <span class="text-xs font-bold uppercase text-slate-500 mb-1 block">Sugerencia de Copy (Próxima Semana)</span>
+                        <p class="text-sm italic text-slate-700">"Priorizar la urgencia y el incentivo económico ('pozo', 'gratis') en las dos primeras líneas."</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-6 border-t-4 border-t-primary">
+                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4">
+                    <i class="fa-solid fa-rocket text-primary"></i> Plan de Acción (Últimos 14 Días)
+                </h2>
+                <ul class="space-y-4">
+                    <li class="flex gap-3">
+                        <i class="fa-solid fa-bullseye text-primary mt-1"></i>
+                        <div>
+                            <span class="font-semibold text-sm block">Foco de Producto</span>
+                            <span class="text-sm text-slate-600" id="insight-producto">Destinar mayor volumen de envíos a las verticales con picos recientes de actividad.</span>
+                        </div>
+                    </li>
+                    <li class="flex gap-3">
+                        <i class="fa-solid fa-tower-cell text-primary mt-1"></i>
+                        <div>
+                            <span class="font-semibold text-sm block">Canal Prioritario</span>
+                            <span class="text-sm text-slate-600" id="insight-canal">Liderando la conversión. Usar como vía principal para segmentos VIP.</span>
+                        </div>
+                    </li>
+                    <li class="flex gap-3">
+                        <i class="fa-solid fa-shield-halved text-primary mt-1"></i>
+                        <div>
+                            <span class="font-semibold text-sm block">Manejo de Fatiga</span>
+                            <span class="text-sm text-slate-600">Rotar segmentos en canales tradicionales (Mail/SMS) para evitar quemar la base. Apoyarse en triggers de saldo automático.</span>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="card p-6">
+                <h2 class="text-lg font-bold text-slate-800 mb-1">Rendimiento por Canal</h2>
+                <p class="text-xs text-slate-500 mb-4">Tasa de actividad promedio (%)</p>
+                <div id="chart-channels" class="w-full h-72"></div>
+            </div>
+            <div class="card p-6">
+                <h2 class="text-lg font-bold text-slate-800 mb-1">Rendimiento por Producto</h2>
+                <p class="text-xs text-slate-500 mb-4">Tasa de actividad promedio (%)</p>
+                <div id="chart-products" class="w-full h-72"></div>
+            </div>
+        </section>
+        
+        <!-- Evolutivo Temporal -->
+        <section class="card p-6">
+            <h2 class="text-lg font-bold text-slate-800 mb-1">Evolución de Actividad en el Tiempo</h2>
+            <p class="text-xs text-slate-500 mb-4">Tendencia diaria de actividad general</p>
+            <div id="chart-timeline" class="w-full h-72"></div>
+        </section>
+
+        <!-- Data Tables Section -->
+        <section class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            
+            <!-- Alertas Críticas (1 Column) -->
+            <div class="card p-0 col-span-1 border-red-200 overflow-hidden flex flex-col">
+                <div class="bg-red-50 p-4 border-b border-red-100 flex items-center justify-between">
+                    <h2 class="text-md font-bold text-red-700 flex items-center gap-2">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Alertas Críticas (< 1%)
+                    </h2>
+                    <span class="bg-red-200 text-red-800 text-xs font-bold px-2 py-1 rounded-full" id="alert-count">0</span>
+                </div>
+                <div class="p-0 overflow-auto flex-1 max-h-96">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead class="bg-slate-50 sticky top-0">
+                            <tr>
+                                <th class="py-3 px-4 font-semibold text-slate-600 border-b">Campaña / Canal</th>
+                                <th class="py-3 px-4 font-semibold text-slate-600 border-b text-right">Actividad</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alerts-table-body" class="divide-y divide-slate-100">
+                            <!-- JS Injection -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Top 10 Campañas (2 Columns) -->
+            <div class="card p-0 col-span-1 xl:col-span-2 overflow-hidden flex flex-col">
+                <div class="bg-slate-50 p-4 border-b border-slate-200">
+                    <h2 class="text-md font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-trophy text-warning"></i> Top 10 Mejores Campañas
+                    </h2>
+                </div>
+                <div class="p-0 overflow-auto flex-1 max-h-96">
+                    <table class="w-full text-left border-collapse text-sm whitespace-nowrap">
+                        <thead class="bg-slate-50 sticky top-0 z-10">
+                            <tr>
+                                <th class="py-3 px-4 font-semibold text-slate-600 border-b">Fecha</th>
+                                <th class="py-3 px-4 font-semibold text-slate-600 border-b">Producto</th>
+                                <th class="py-3 px-4 font-semibold text-slate-600 border-b">Canal</th>
+                                <th class="py-3 px-4 font-semibold text-slate-600 border-b text-right">Impactos</th>
+                                <th class="py-3 px-4 font-semibold text-slate-600 border-b text-right">Jugadores</th>
+                                <th class="py-3 px-4 font-semibold text-slate-600 border-b text-right">Tasa Actividad</th>
+                            </tr>
+                        </thead>
+                        <tbody id="top-table-body" class="divide-y divide-slate-100">
+                            <!-- JS Injection -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- App Logic & Mock Data -->
+    <script>
+        // 1. MOCK DATA (Simulando el DataFrame de Pandas)
+        // En producción, aquí se procesaría un archivo CSV/Excel mediante FileReader o API.
+        const mockData = [
+            { date: '2026-07-01', product: 'Tinka', channel: 'WHATSAPP', sends: 4500, players: 2100, message: '¡Juega HOY! El pozo está increíble. Gratis si participas.' },
+            { date: '2026-07-02', product: 'Kábala', channel: 'SMS', sends: 12000, players: 4500, message: 'Revisa tu saldo, Kábala te espera. Juega aquí: cutt.ly/xyz' },
+            { date: '2026-07-03', product: 'Tinka', channel: 'MAIL', sends: 55000, players: 120, message: 'Boletín informativo de la semana. Conoce los ganadores.' }, // Alerta crítica
+            { date: '2026-07-04', product: 'Gana Diario', channel: 'SMS', sends: 8500, players: 3400, message: 'Tu bono vence hoy. Usa tu saldo y juega ya.' },
+            { date: '2026-07-05', product: 'Casino', channel: 'WHATSAPP', sends: 2000, players: 900, message: 'Tiradas gratis en el nuevo slot. Entra ahora.' },
+            { date: '2026-07-06', product: 'Tinka', channel: 'SMS', sends: 15000, players: 2500, message: 'El pozo millonario te llama. ¡No pierdas la oportunidad!' },
+            { date: '2026-07-07', product: 'Kábala', channel: 'MAIL', sends: 30000, players: 250, message: 'Promoción especial para clientes inactivos. Regalo 1 jugada.' }, // Alerta
+            { date: '2026-07-08', product: 'Te Apuesto', channel: 'SMS', sends: 18000, players: 6000, message: 'Apuesta en la final hoy. Cuotas mejoradas.' },
+            { date: '2026-07-09', product: 'Tinka', channel: 'WHATSAPP', sends: 6000, players: 2800, message: '¡POZO HISTÓRICO! S/ 20 Millones. Juega ahora mismo gratis 1.' },
+            { date: '2026-07-10', product: 'Gana Diario', channel: 'MAIL', sends: 40000, players: 300, message: 'Resumen de resultados de Gana Diario.' }, // Alerta
+            { date: '2026-07-11', product: 'Casino', channel: 'SMS', sends: 10000, players: 2200, message: 'Bono de recarga activo. Doble saldo.' },
+            { date: '2026-07-12', product: 'Tinka', channel: 'SMS', sends: 25000, players: 3000, message: 'Recupera tu suerte. Juega Tinka.' },
+            { date: '2026-07-13', product: 'Kábala', channel: 'WHATSAPP', sends: 3500, players: 1500, message: 'Juega Kábala con tus números de la suerte. Juega aquí: bit.ly/kab' },
+            { date: '2026-07-14', product: 'Te Apuesto', channel: 'SMS', sends: 22000, players: 7500, message: 'Champions League! Apuesta ya y gana.' },
+        ];
+
+        // Formatters
+        const formatNumber = (num) => new Intl.NumberFormat('es-PE').format(num);
+        const formatPercent = (num) => (num * 100).toFixed(2) + '%';
+
+        // 2. CORE LOGIC (Simulando Pandas groupby y mean/sum)
+        function processData(data) {
+            let totalSends = 0;
+            let totalPlayers = 0;
+            
+            const mixMap = {};
+            const channelMap = {};
+            const productMap = {};
+            const timelineMap = {};
+            const keywordsAnalysis = {
+                'Urgencia/Tiempo': { words: ['hoy', 'ahora', 'ya'], sends: 0, players: 0 },
+                'Gratuidad/Regalo': { words: ['gratis', 'regalo'], sends: 0, players: 0 },
+                'Pozo/Millones': { words: ['pozo', 'millones'], sends: 0, players: 0 },
+                'Redirección': { words: ['cutt.ly', 'bit.ly', 'juega aquí'], sends: 0, players: 0 },
+            };
+
+            data.forEach(row => {
+                totalSends += row.sends;
+                totalPlayers += row.players;
                 
-        return pd.DataFrame(resultados).sort_values('Tasa Promedio', ascending=False) if resultados else None
+                // Mix (Product + Channel)
+                const mixKey = `${row.product} | ${row.channel}`;
+                if (!mixMap[mixKey]) mixMap[mixKey] = { sends: 0, players: 0, product: row.product, channel: row.channel };
+                mixMap[mixKey].sends += row.sends;
+                mixMap[mixKey].players += row.players;
 
-    ins_col1, ins_col2 = st.columns(2)
-    
-    with ins_col1:
-        st.subheader("📝 Análisis Semántico (Keywords)")
-        analisis_kw = analizar_keywords(df_filtered.copy())
-        
-        if analisis_kw is not None and not analisis_kw.empty:
-            mejor_concepto = analisis_kw.iloc[0]
-            st.markdown(
-                f"* **El Gatillo Ganador:** Textos con conceptos de **{mejor_concepto['Concepto']}** promedian una tasa de actividad superior ({(mejor_concepto['Tasa Promedio']*100):.2f}%).\n"
-                f"* **Redirección:** Asegúrate de incluir URLs cortas y llamados a la acción imperativos ('Juega aquí') en los primeros caracteres para reducir la fricción en la lectura rápida.\n"
-                f"* **Copy Sugerido:** Mantener la urgencia y el gancho del incentivo económico en las dos primeras líneas del SMS o WhatsApp."
-            )
-        else:
-            st.markdown("* No se detectó suficiente variedad en los textos para el análisis semántico.")
+                // Channel Grouping
+                if (!channelMap[row.channel]) channelMap[row.channel] = { sends: 0, players: 0 };
+                channelMap[row.channel].sends += row.sends;
+                channelMap[row.channel].players += row.players;
 
-    with ins_col2:
-        st.subheader("🗓️ Recomendaciones Próxima Semana")
-        # Analizando tendencias recientes (Últimos 14 días del reporte)
-        if not df_filtered.empty and 'Fecha' in df_filtered.columns:
-            max_date_data = df_filtered['Fecha'].max()
-            recent_cutoff = max_date_data - pd.Timedelta(days=14)
-            df_recent = df_filtered[df_filtered['Fecha'] >= recent_cutoff]
-            
-            if not df_recent.empty and 'Jugadores' in df_recent.columns and 'Total de envíos' in df_recent.columns:
-                canal_grp_rec = df_recent.groupby('TIPO')[['Total de envíos', 'Jugadores']].sum()
-                canal_grp_rec['Tasa'] = canal_grp_rec['Jugadores'] / canal_grp_rec['Total de envíos']
-                top_rec_canal = canal_grp_rec.sort_values('Tasa', ascending=False).index[0] if not canal_grp_rec.empty else "N/A"
+                // Product Grouping
+                if (!productMap[row.product]) productMap[row.product] = { sends: 0, players: 0 };
+                productMap[row.product].sends += row.sends;
+                productMap[row.product].players += row.players;
                 
-                prod_grp_rec = df_recent.groupby('Producto')[['Total de envíos', 'Jugadores']].sum()
-                prod_grp_rec['Tasa'] = prod_grp_rec['Jugadores'] / prod_grp_rec['Total de envíos']
-                top_rec_prod = prod_grp_rec.sort_values('Tasa', ascending=False).index[0] if not prod_grp_rec.empty else "N/A"
-                
-                st.markdown(
-                    f"*(Basado en la tracción de los últimos 14 días analizados)*\n"
-                    f"* **Foco de Producto:** **{top_rec_prod}** demostró el mayor pico de actividad recientemente. Se recomienda destinar el mayor volumen de envíos a este producto la próxima semana.\n"
-                    f"* **Canal Prioritario:** **{top_rec_canal}** está liderando la conversión actual. Úsalo como vía principal para los segmentos VIP o triggers automáticos.\n"
-                    f"* **Manejo de Fatiga:** Rotar segmentos en los canales tradicionales (Mail/SMS genérico) para evitar quemar a la base de usuarios. Apoyarse en la automatización."
-                )
-            else:
-                st.write("Faltan datos en las columnas de envíos para generar la recomendación reciente.")
-        else:
-            st.write("Filtro de fecha vacío.")
+                // Timeline
+                if (!timelineMap[row.date]) timelineMap[row.date] = { sends: 0, players: 0 };
+                timelineMap[row.date].sends += row.sends;
+                timelineMap[row.date].players += row.players;
 
-    st.divider()
+                // Keyword Analysis
+                const msg = row.message.toLowerCase();
+                for (let category in keywordsAnalysis) {
+                    if (keywordsAnalysis[category].words.some(w => msg.includes(w))) {
+                        keywordsAnalysis[category].sends += row.sends;
+                        keywordsAnalysis[category].players += row.players;
+                    }
+                }
+            });
 
-    # ---------------------------------------------------------
-    # SECCIÓN 4: Rendimiento de Canales y Productos (Con Drill-down)
-    # ---------------------------------------------------------
-    st.header("📈 Rendimiento de Actividad: Canales y Productos")
-    
-    tab1, tab2 = st.tabs(["Canales (TIPO)", "Productos"])
-    
-    with tab1:
-        st.subheader("Tasa de Actividad Promedio por Canal")
-        if not df_filtered.empty and 'TIPO' in df_filtered.columns and 'Tasa_Actividad' in df_filtered.columns:
-            canal_grp = df_filtered.groupby('TIPO')['Tasa_Actividad'].mean().reset_index()
-            bar_canal = alt.Chart(canal_grp).mark_bar(color='#10B981').encode(
-                x=alt.X('Tasa_Actividad:Q', axis=alt.Axis(format='%'), title='Tasa de Actividad en Juego'),
-                y=alt.Y('TIPO:N', sort='-x', title='Canal'),
-                tooltip=[alt.Tooltip('TIPO', title='Canal'), alt.Tooltip('Tasa_Actividad', format='.2%', title='Actividad')]
-            ).properties(height=300)
-            st.altair_chart(bar_canal, use_container_width=True)
-            
-            st.write("### Evolución Diaria de Actividad por Canal")
-            canal_seleccionado = st.selectbox("Selecciona un canal para auditar su tendencia:", df_filtered['TIPO'].dropna().unique())
-            
-            df_canal = df_filtered[df_filtered['TIPO'] == canal_seleccionado]
-            if not df_canal.empty and 'Fecha' in df_canal.columns:
-                evolucion_canal = df_canal.groupby('Fecha')['Tasa_Actividad'].mean().reset_index()
-                line_canal = alt.Chart(evolucion_canal).mark_line(point=True, color='#10B981').encode(
-                    x=alt.X('Fecha:T', title='Fecha de Envío'),
-                    y=alt.Y('Tasa_Actividad:Q', axis=alt.Axis(format='%'), title='Tasa de Actividad Promedio'),
-                    tooltip=['Fecha:T', alt.Tooltip('Tasa_Actividad', format='.2%', title='Actividad')]
-                ).properties(height=250)
-                st.altair_chart(line_canal, use_container_width=True)
-        
-    with tab2:
-        st.subheader("Tasa de Actividad Promedio por Producto")
-        if not df_filtered.empty and 'Producto' in df_filtered.columns and 'Tasa_Actividad' in df_filtered.columns:
-            prod_grp = df_filtered.groupby('Producto')['Tasa_Actividad'].mean().reset_index()
-            bar_prod = alt.Chart(prod_grp).mark_bar(color='#F59E0B').encode(
-                x=alt.X('Tasa_Actividad:Q', axis=alt.Axis(format='%'), title='Tasa de Actividad en Juego'),
-                y=alt.Y('Producto:N', sort='-x', title='Producto'),
-                tooltip=[alt.Tooltip('Producto', title='Producto'), alt.Tooltip('Tasa_Actividad', format='.2%', title='Actividad')]
-            ).properties(height=300)
-            st.altair_chart(bar_prod, use_container_width=True)
-            
-            st.write("### Evolución Diaria de Actividad por Producto")
-            prod_seleccionado = st.selectbox("Selecciona un producto para auditar su tendencia:", df_filtered['Producto'].dropna().unique())
-            
-            df_prod = df_filtered[df_filtered['Producto'] == prod_seleccionado]
-            if not df_prod.empty and 'Fecha' in df_prod.columns:
-                evolucion_prod = df_prod.groupby('Fecha')['Tasa_Actividad'].mean().reset_index()
-                line_prod = alt.Chart(evolucion_prod).mark_line(point=True, color='#EF4444').encode(
-                    x=alt.X('Fecha:T', title='Fecha de Envío'),
-                    y=alt.Y('Tasa_Actividad:Q', axis=alt.Axis(format='%'), title='Tasa de Actividad Promedio'),
-                    tooltip=['Fecha:T', alt.Tooltip('Tasa_Actividad', format='.2%', title='Actividad')]
-                ).properties(height=250)
-                st.altair_chart(line_prod, use_container_width=True)
-
-    st.divider()
-
-    # ---------------------------------------------------------
-    # SECCIÓN 5: Alertas Críticas (Actividad < 1.0%)
-    # ---------------------------------------------------------
-    st.header("🚨 Alertas Críticas (Tasa de Actividad < 1.0%)")
-    
-    if 'Tasa_Actividad' in df_filtered.columns and 'Total de envíos' in df_filtered.columns:
-        alertas_df = df_filtered[(df_filtered['Tasa_Actividad'] < 0.01) & (df_filtered['Total de envíos'] >= 500)]
-        
-        if not alertas_df.empty:
-            st.warning(f"Se detectaron **{len(alertas_df)} envíos** masivos que generaron menos del 1% de actividad. Se sugiere pausar y reevaluar la segmentación.")
-            alertas_df_clean = alertas_df.sort_values('Tasa_Actividad', ascending=True)
-            if 'Fecha' in alertas_df_clean.columns:
-                alertas_df_clean['Fecha'] = alertas_df_clean['Fecha'].dt.strftime('%Y-%m-%d')
-                
-            cols_alerta = ['Fecha', 'Campaña', 'Producto', 'TIPO', 'Total de envíos', 'Jugadores', 'Tasa_Actividad']
-            cols_alerta_final = [c for c in cols_alerta if c in alertas_df_clean.columns]
-            
-            fmt_dict_alert = {'Tasa_Actividad': '{:.2%}', 'Total de envíos': '{:,.0f}', 'Jugadores': '{:,.0f}'}
-            fmt_dict_alert = {k: v for k, v in fmt_dict_alert.items() if k in cols_alerta_final}
-            
-            st.dataframe(alertas_df_clean[cols_alerta_final].style.format(fmt_dict_alert), use_container_width=True)
-        else:
-            st.success("¡Excelente! No se encontraron campañas masivas con rendimiento inferior al 1.0% en este periodo.")
-            
-    st.divider()
-
-    # ---------------------------------------------------------
-    # SECCIÓN 6: Buscador y Top 10 Campañas Auditadas
-    # ---------------------------------------------------------
-    st.header("🏆 Top 10 Campañas (Por Actividad de Juego)")
-    
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        if 'Producto' in df_filtered.columns:
-            f_producto = st.multiselect("Filtrar la tabla por Producto:", df_filtered['Producto'].dropna().unique())
-        else: f_producto = []
-    with col_f2:
-        if 'TIPO' in df_filtered.columns:
-            f_canal = st.multiselect("Filtrar la tabla por Canal:", df_filtered['TIPO'].dropna().unique())
-        else: f_canal = []
-        
-    df_top = df_filtered.copy()
-    if f_producto and 'Producto' in df_top.columns:
-        df_top = df_top[df_top['Producto'].isin(f_producto)]
-    if f_canal and 'TIPO' in df_top.columns:
-        df_top = df_top[df_top['TIPO'].isin(f_canal)]
-        
-    if 'Total de envíos' in df_top.columns and 'Tasa_Actividad' in df_top.columns:
-        top_10 = df_top[df_top['Total de envíos'] >= 500].sort_values('Tasa_Actividad', ascending=False).head(10)
-        
-        if 'Fecha' in top_10.columns:
-            top_10['Fecha'] = top_10['Fecha'].dt.strftime('%Y-%m-%d')
-        
-        columnas_deseadas = ['Fecha', 'Campaña', 'Producto', 'TIPO', 'Mensaje_Texto', 'Total de envíos', 'Jugadores', 'Tasa_Actividad']
-        columnas_finales = [col for col in columnas_deseadas if col in top_10.columns]
-        
-        formato_columnas = {
-            'Tasa_Actividad': '{:.2%}',
-            'Total de envíos': '{:,.0f}',
-            'Jugadores': '{:,.0f}'
+            return { totalSends, totalPlayers, mixMap, channelMap, productMap, timelineMap, keywordsAnalysis };
         }
-        formato_final = {k: v for k, v in formato_columnas.items() if k in columnas_finales}
-        
-        st.dataframe(
-            top_10[columnas_finales].style.format(formato_final),
-            use_container_width=True
-        )
+
+        // 3. UI UPDATER
+        function updateDashboard(data) {
+            const metrics = processData(data);
+            const globalRate = metrics.totalSends > 0 ? (metrics.totalPlayers / metrics.totalSends) : 0;
+
+            // Update KPIs
+            document.getElementById('kpi-envios').innerText = formatNumber(metrics.totalSends);
+            document.getElementById('kpi-jugadores').innerText = formatNumber(metrics.totalPlayers);
+            document.getElementById('kpi-tasa').innerText = formatPercent(globalRate);
+
+            // Best Mix
+            let bestMix = { key: '', rate: 0 };
+            for (let k in metrics.mixMap) {
+                let m = metrics.mixMap[k];
+                let rate = m.sends > 0 ? (m.players / m.sends) : 0;
+                if (rate > bestMix.rate && m.sends > 500) { // filter out low volume outliers
+                    bestMix = { key: k, rate: rate };
+                }
+            }
+            document.getElementById('kpi-mix-name').innerText = bestMix.key || 'N/A';
+            document.getElementById('kpi-mix-tasa').innerText = formatPercent(bestMix.rate);
+
+            // Insights - Best Keyword
+            let bestKeyword = { name: '', rate: 0 };
+            for (let k in metrics.keywordsAnalysis) {
+                let cat = metrics.keywordsAnalysis[k];
+                let rate = cat.sends > 0 ? (cat.players / cat.sends) : 0;
+                if (rate > bestKeyword.rate) bestKeyword = { name: k, rate: rate };
+            }
+            document.getElementById('insight-keyword').innerHTML = `Textos con conceptos de <b>${bestKeyword.name}</b> promedian la mayor actividad (${formatPercent(bestKeyword.rate)}).`;
+
+            // Insights - Best Prod/Chan (Simulating recent 14 days)
+            let bestChan = { name: '', rate: 0 };
+            for(let c in metrics.channelMap){
+                let rate = metrics.channelMap[c].players / metrics.channelMap[c].sends;
+                if(rate > bestChan.rate) bestChan = {name: c, rate: rate};
+            }
+            let bestProd = { name: '', rate: 0 };
+            for(let p in metrics.productMap){
+                let rate = metrics.productMap[p].players / metrics.productMap[p].sends;
+                if(rate > bestProd.rate) bestProd = {name: p, rate: rate};
+            }
+            document.getElementById('insight-producto').innerHTML = `<b>${bestProd.name}</b> demostró el mayor pico de actividad recientemente.`;
+            document.getElementById('insight-canal').innerHTML = `<b>${bestChan.name}</b> está liderando la conversión con un ${formatPercent(bestChan.rate)}.`;
+
+            // Data for Charts
+            const channelCategories = Object.keys(metrics.channelMap);
+            const channelSeries = channelCategories.map(c => (metrics.channelMap[c].players / metrics.channelMap[c].sends * 100).toFixed(2));
+            
+            const productCategories = Object.keys(metrics.productMap);
+            const productSeries = productCategories.map(p => (metrics.productMap[p].players / metrics.productMap[p].sends * 100).toFixed(2));
+
+            const timelineCategories = Object.keys(metrics.timelineMap).sort();
+            const timelineSeries = timelineCategories.map(d => (metrics.timelineMap[d].players / metrics.timelineMap[d].sends * 100).toFixed(2));
+
+            // Render Charts
+            renderBarChart('chart-channels', channelCategories, channelSeries, '#10b981'); // Emerald
+            renderBarChart('chart-products', productCategories, productSeries, '#f59e0b'); // Amber
+            renderLineChart('chart-timeline', timelineCategories, timelineSeries, '#3b82f6'); // Blue
+
+            // Calculate Rates for rows and Sort for Tables
+            const enrichedData = data.map(r => ({...r, rate: r.sends>0 ? (r.players/r.sends) : 0}));
+            
+            // Alerts Table (< 1% and > 500 sends)
+            const alerts = enrichedData.filter(r => r.rate < 0.01 && r.sends > 500).sort((a,b) => a.rate - b.rate);
+            document.getElementById('alert-count').innerText = alerts.length;
+            const alertsHtml = alerts.map(a => `
+                <tr class="hover:bg-red-50/50 transition-colors">
+                    <td class="py-2 px-4 border-b">
+                        <div class="font-medium text-slate-800">${a.product}</div>
+                        <div class="text-xs text-slate-500">${a.channel} | ${formatNumber(a.sends)} envíos</div>
+                    </td>
+                    <td class="py-2 px-4 border-b text-right font-bold text-red-600">${formatPercent(a.rate)}</td>
+                </tr>
+            `).join('');
+            document.getElementById('alerts-table-body').innerHTML = alerts.length ? alertsHtml : '<tr><td colspan="2" class="py-4 text-center text-slate-500">No hay alertas críticas.</td></tr>';
+
+            // Top 10 Table
+            const top10 = [...enrichedData].filter(r => r.sends > 500).sort((a,b) => b.rate - a.rate).slice(0, 10);
+            const topHtml = top10.map(t => `
+                <tr class="hover:bg-slate-50 transition-colors">
+                    <td class="py-2 px-4 border-b text-slate-600">${t.date}</td>
+                    <td class="py-2 px-4 border-b font-medium text-slate-800">${t.product}</td>
+                    <td class="py-2 px-4 border-b text-slate-600"><span class="bg-slate-100 px-2 py-1 rounded text-xs border border-slate-200">${t.channel}</span></td>
+                    <td class="py-2 px-4 border-b text-right text-slate-600">${formatNumber(t.sends)}</td>
+                    <td class="py-2 px-4 border-b text-right text-slate-600">${formatNumber(t.players)}</td>
+                    <td class="py-2 px-4 border-b text-right font-bold text-accent">${formatPercent(t.rate)}</td>
+                </tr>
+            `).join('');
+            document.getElementById('top-table-body').innerHTML = topHtml;
+        }
+
+        // 4. CHART SETUP (ApexCharts)
+        let charts = {};
+        function renderBarChart(elementId, categories, data, color) {
+            if(charts[elementId]) charts[elementId].destroy();
+            const options = {
+                series: [{ name: 'Tasa Actividad', data: data }],
+                chart: { type: 'bar', height: 280, toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
+                plotOptions: { bar: { borderRadius: 4, horizontal: true, dataLabels: { position: 'top' } } },
+                colors: [color],
+                dataLabels: {
+                    enabled: true,
+                    offsetX: 25,
+                    style: { fontSize: '11px', colors: ['#475569'], fontWeight: 600 },
+                    formatter: function(val) { return val + "%" }
+                },
+                xaxis: { categories: categories, labels: { formatter: function(val) { return val + "%" } } },
+                grid: { strokeDashArray: 4, borderColor: '#e2e8f0' }
+            };
+            charts[elementId] = new ApexCharts(document.querySelector("#" + elementId), options);
+            charts[elementId].render();
+        }
+
+        function renderLineChart(elementId, categories, data, color) {
+            if(charts[elementId]) charts[elementId].destroy();
+            const options = {
+                series: [{ name: 'Actividad General', data: data }],
+                chart: { type: 'area', height: 280, toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
+                colors: [color],
+                fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 100] } },
+                dataLabels: { enabled: false },
+                stroke: { curve: 'smooth', width: 3 },
+                xaxis: { categories: categories, tooltip: { enabled: false } },
+                yaxis: { labels: { formatter: function(val) { return val + "%" } } },
+                grid: { strokeDashArray: 4, borderColor: '#e2e8f0' },
+                markers: { size: 4, colors: ['#fff'], strokeColors: color, strokeWidth: 2, hover: { size: 6 } }
+            };
+            charts[elementId] = new ApexCharts(document.querySelector("#" + elementId), options);
+            charts[elementId].render();
+        }
+
+        // INIT
+        document.addEventListener('DOMContentLoaded', () => {
+            // Simulamos el inicio procesando nuestra data de prueba
+            updateDashboard(mockData);
+        });
+
+    </script>
+</body>
+</html>
